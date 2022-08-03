@@ -1,0 +1,120 @@
+- hosts: backup # Конфигурация сервера backup
+  become: true
+  tasks:
+
+    - name: install epel-release
+      yum:
+        state: present
+        name:
+          - epel-release
+
+    - name: install borg_backup
+      yum:
+        state: present
+        name:
+          - borgbackup
+
+    - name: Create user borg
+      user:
+        name: borg
+
+    - name: format disk sdb
+      filesystem: dev=/dev/sdb fstype=ext4
+
+    - name: Mount /var/backup
+      mount:
+        path: "/var/backup"
+        src: /dev/sdb
+        state: mounted
+        fstype: ext4
+
+    - name: Creates directory /var/backup
+      file:
+        path: /var/backup
+        state: directory
+        mode: '0700'
+        owner: borg
+        group: borg
+
+    - name: rm lost+found
+      shell: rm -rf /var/backup/*
+
+    - name: Creates directory .ssh
+      file:
+        path: /home/borg/.ssh
+        state: directory
+        mode: '0700'
+        owner: borg
+        group: borg
+
+    - name: copy ssh-key
+      template:
+        src: files/client/root/.ssh/id_rsa.pub 
+        dest:  /home/borg/.ssh/
+
+    - name: name file
+      shell: mv /home/borg/.ssh/id_rsa.pub /home/borg/.ssh/authorized_keys
+
+    - name: chown
+      file:
+        path: /home/borg/.ssh/authorized_keys
+        mode: '0600'
+        owner: borg
+        group: borg
+
+
+- hosts: client # Конфигурируем client для выполнения бэкапов
+  become: true
+  tasks:
+    - name: install epel-release
+      yum:
+        state: present
+        name:
+          - epel-release
+
+    - name: install borg_backup
+      yum:
+        state: present
+        name:
+          - borgbackup
+
+    - name: Generate /etc/ssh/ RSA host key
+      command : ssh-keygen -q -t rsa -f /root/.ssh/id_rsa -C "" -N ""
+      args:
+        creates: /root/.ssh/id_rsa
+
+    - name: Extract file
+      fetch:
+        src: /root/.ssh/id_rsa.pub
+        dest: ./files/
+
+    - name: copy script.sh
+      template:
+        src: files/init.sh
+        dest: /home/init.sh
+
+    #- name: inicial repo /var/backup
+    #  shell: borg init --encryption=repokey borg@192.168.11.160:/var/backup/
+    #  ignore_errors: yes
+
+    - name: copy borg-backup.service
+      template:
+        src: files/borg-backup.service
+        dest: /etc/systemd/system/
+
+    - name: copy borg-backup.timer
+      template:
+        src: files/borg-backup.timer
+        dest: /etc/systemd/system/
+
+    - name: enable borg-backup.timer
+      service:
+        name: borg-backup.timer
+        state: started 
+        enabled: yes
+
+    #- name: enable borg-backup.service
+    #  service:
+    #   name: borg-backup.service
+    #    state: started 
+    #    enabled: yes
