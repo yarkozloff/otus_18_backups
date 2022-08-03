@@ -32,9 +32,10 @@ Vagrant 2.2.19
 ### Настройка сервера client
 На клиенте устанавливаем пакеты: epel-release, borgbackup. Генерируем ssh ключи, и переносим ключи с сервера с бэкапа на клиент.
 ## Тестирование
-### Вручную
+### Ручное выполнение бэкапа
 На клиенте пробуем удаленно инициализировать репозиторий и создать бэкап каталога /etc:
-``[root@client ~]# borg init --encryption=repokey borg@192.168.11.160:/var/backup/
+```
+[root@client ~]# borg init --encryption=repokey borg@192.168.11.160:/var/backup/
 Enter new passphrase:
 Enter same passphrase again:
 Do you want your passphrase to be displayed for verification? [yN]: N
@@ -53,7 +54,7 @@ Use "borg key export" to export the key, optionally in printable format.
 Write down the passphrase. Store both at safe place(s).`
 
 ```
-Выпонление ручного бэкапа:
+Выполнение ручного бэкапа:
 ```
 [root@client ~]# /bin/borg create --stats --list borg@192.168.11.160:/var/backup/::"etc-{now:%Y-%m-%d_%H:%M:%S}" /etc
 Enter passphrase for key ssh://borg@192.168.11.160/var/backup:
@@ -78,5 +79,18 @@ Chunk index:                    1284                 1698
 ```
 Успех.
 
-### Автоматизация
-На клиенте бэкапом будет заниматься сервис borg-backup.service, помогать в этом ему будет каждые 5 мин таймер borg-backup.timer. 
+### Автоматическое выполнение бэкапа
+На клиенте бэкапом будет заниматься сервис borg-backup.service, помогать ему каждые 5 мин в этом будет таймер borg-backup.timer. Создаем юниты, разрешаем и стартуем таймер. Проверяем работу таймера и выполнение бэкапа:
+```
+[root@client ~]# systemctl list-timers --all | grep borg
+Wed 2022-08-03 20:51:04 UTC  26s ago  Wed 2022-08-03 20:51:31 UTC  4ms ago      borg-backup.timer            borg-backup.service
+[root@client ~]# borg list borg@192.168.11.160:/var/backup/
+etc-2022-08-03_20:51:31              Wed, 2022-08-03 20:51:32 [31e28f6f7ff4354ecffdf308b52b7fcb2b0a76c03e5e39b1c10d7f769e6b8936]
+```
+Успех, в borg list каждые 5 мин обновляется бэкап
+
+## Ansible
+Для автоматического развертывания двух машин напишем playbook. Роль выполняет условия, связанные с установкой пакетов, созданием уз, созданием репозитория прокидыванием ключей, созданием сервиса и таймера. Для этого после vagrant up необходимо запровиженить машины командой vagrant provision.
+
+Проблемы:
+Не получается создать таску, которая бы инициализировала репозиторий, поэтому данный момент необходимо выполнить вручную подключившись к машине, выпонлив команду и пропустив 3 шага. Далее после очередного provision сервис с таймером корректно стартуют и работают.
